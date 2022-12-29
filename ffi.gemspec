@@ -5,15 +5,15 @@ Gem::Specification.new do |s|
   s.version = FFI::VERSION
   s.author = 'Wayne Meissner'
   s.email = 'wmeissner@gmail.com'
-  s.homepage = 'https://github.com/ffi/ffi/wiki'
+  s.homepage = 'https://github.com/wakoopa/ffi/wiki'
   s.summary = 'Ruby FFI'
   s.description = 'Ruby FFI library'
   if s.respond_to?(:metadata)
-    s.metadata['bug_tracker_uri'] = 'https://github.com/ffi/ffi/issues'
-    s.metadata['changelog_uri'] = 'https://github.com/ffi/ffi/blob/master/CHANGELOG.md'
-    s.metadata['documentation_uri'] = 'https://github.com/ffi/ffi/wiki'
-    s.metadata['wiki_uri'] = 'https://github.com/ffi/ffi/wiki'
-    s.metadata['source_code_uri'] = 'https://github.com/ffi/ffi/'
+    s.metadata['bug_tracker_uri'] = 'https://github.com/wakoopa/ffi/issues'
+    s.metadata['changelog_uri'] = 'https://github.com/wakoopa/ffi/blob/master/CHANGELOG.md'
+    s.metadata['documentation_uri'] = 'https://github.com/wakoopa/ffi/wiki'
+    s.metadata['wiki_uri'] = 'https://github.com/wakoopa/ffi/wiki'
+    s.metadata['source_code_uri'] = 'https://github.com/wakoopa/ffi/'
     s.metadata['mailing_list_uri'] = 'http://groups.google.com/group/ruby-ffi'
   end
   s.files = `git ls-files -z`.split("\x0").reject do |f|
