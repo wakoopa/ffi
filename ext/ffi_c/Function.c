@@ -37,15 +37,8 @@
 #endif
 
 #include <stdio.h>
-#ifndef _MSC_VER
-# include <stdint.h>
-# include <stdbool.h>
-#else
-# include "win32/stdbool.h"
-# if !defined(INT8_MIN)
-#  include "win32/stdint.h"
-# endif
-#endif
+#include <stdint.h>
+#include <stdbool.h>
 #include <ruby.h>
 #include <ruby/thread.h>
 
@@ -274,11 +267,11 @@ VALUE
 rbffi_Function_ForProc(VALUE rbFunctionInfo, VALUE proc)
 {
     VALUE callback, cbref, cbTable;
-    Function* fp;
 
     cbref = RTEST(rb_ivar_defined(proc, id_cb_ref)) ? rb_ivar_get(proc, id_cb_ref) : Qnil;
     /* If the first callback reference has the same function function signature, use it */
     if (cbref != Qnil && CLASS_OF(cbref) == rbffi_FunctionClass) {
+        Function* fp;
         Data_Get_Struct(cbref, Function, fp);
         if (fp->rbFunctionInfo == rbFunctionInfo) {
             return cbref;
@@ -297,8 +290,10 @@ rbffi_Function_ForProc(VALUE rbFunctionInfo, VALUE proc)
         rb_ivar_set(proc, id_cb_ref, callback);
     } else {
         /* The proc instance has been used as more than one type of callback, store extras in a hash */
-        cbTable = rb_hash_new();
-        rb_ivar_set(proc, id_cbtable, cbTable);
+        if(cbTable == Qnil) {
+          cbTable = rb_hash_new();
+          rb_ivar_set(proc, id_cbtable, cbTable);
+        }
         rb_hash_aset(cbTable, rbFunctionInfo, callback);
     }
 
@@ -721,7 +716,7 @@ invoke_callback(VALUE data)
                 param = rb_float_new(*(double *) parameters[i]);
                 break;
             case NATIVE_LONGDOUBLE:
-	      param = rbffi_longdouble_new(*(long double *) parameters[i]);
+	            param = rbffi_longdouble_new(*(long double *) parameters[i]);
                 break;
             case NATIVE_STRING:
                 param = (*(void **) parameters[i] != NULL) ? rb_str_new2(*(char **) parameters[i]) : Qnil;
@@ -792,6 +787,9 @@ invoke_callback(VALUE data)
             break;
         case NATIVE_FLOAT64:
             *((double *) retval) = NUM2DBL(rbReturnValue);
+            break;
+        case NATIVE_LONGDOUBLE:
+            *((long double *) retval) = rbffi_num2longdouble(rbReturnValue);
             break;
         case NATIVE_POINTER:
             if (TYPE(rbReturnValue) == T_DATA && rb_obj_is_kind_of(rbReturnValue, rbffi_PointerClass)) {
@@ -864,9 +862,9 @@ callback_prep(void* ctx, void* code, Closure* closure, char* errmsg, size_t errm
     FunctionType* fnInfo = (FunctionType *) ctx;
     ffi_status ffiStatus;
 
-    ffiStatus = ffi_prep_closure(code, &fnInfo->ffi_cif, callback_invoke, closure);
+    ffiStatus = ffi_prep_closure_loc(closure->pcl, &fnInfo->ffi_cif, callback_invoke, closure, code);
     if (ffiStatus != FFI_OK) {
-        snprintf(errmsg, errmsgsize, "ffi_prep_closure failed.  status=%#x", ffiStatus);
+        snprintf(errmsg, errmsgsize, "ffi_prep_closure_loc failed.  status=%#x", ffiStatus);
         return false;
     }
 

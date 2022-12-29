@@ -8,7 +8,15 @@ if !defined?(RUBY_ENGINE) || RUBY_ENGINE == 'ruby' || RUBY_ENGINE == 'rbx'
 
   require 'ffi/ffi'
 
-elsif defined?(RUBY_ENGINE)
+elsif RUBY_ENGINE == 'jruby' && (RUBY_ENGINE_VERSION.split('.').map(&:to_i) <=> [9, 3]) >= 0
+  JRuby::Util.load_ext("org.jruby.ext.ffi.FFIService")
+  require 'ffi/ffi'
+
+elsif RUBY_ENGINE == 'truffleruby' && (RUBY_ENGINE_VERSION.split('.').map(&:to_i) <=> [20, 1, 0]) >= 0
+  require 'truffleruby/ffi_backend'
+  require 'ffi/ffi'
+
+else
   # Remove the ffi gem dir from the load path, then reload the internal ffi implementation
   $LOAD_PATH.delete(File.dirname(__FILE__))
   $LOAD_PATH.delete(File.join(File.dirname(__FILE__), 'ffi'))

@@ -34,13 +34,8 @@
 #endif
 #include <sys/types.h>
 #include <stdio.h>
-#ifndef _MSC_VER
-# include <stdint.h>
-# include <stdbool.h>
-#else
-# include "win32/stdbool.h"
-# include "win32/stdint.h"
-#endif
+#include <stdint.h>
+#include <stdbool.h>
 #include <errno.h>
 #include <ruby.h>
 #include <ruby/thread.h>
@@ -346,14 +341,13 @@ call_blocking_function(void* data)
 #ifndef HAVE_RUBY_THREAD_HAS_GVL_P
     b->frame->has_gvl = true;
 #endif
-
     return NULL;
 }
 
 VALUE
 rbffi_do_blocking_call(VALUE data)
 {
-    rb_thread_call_without_gvl(call_blocking_function, (void*)data, (void *) -1, NULL);
+    rb_thread_call_without_gvl(call_blocking_function, (void*)data, (rb_unblock_function_t *) -1, NULL);
 
     return Qnil;
 }

@@ -1,7 +1,7 @@
 require 'rubygems/tasks'
 require 'rbconfig'
 require 'rake/clean'
-require File.expand_path("./lib/ffi/version")
+require_relative "lib/ffi/version"
 
 require 'date'
 require 'fileutils'
@@ -20,17 +20,8 @@ def gem_spec
   @gem_spec ||= Gem::Specification.load('ffi.gemspec')
 end
 
-TEST_DEPS = []
-if RUBY_PLATFORM == "java"
-  RSpec::Core::RakeTask.new(:spec) do |config|
-    config.rspec_opts = YAML.load_file 'spec/spec.opts'
-  end
-else
-  RSpec::Core::RakeTask.new(:spec => :compile) do |config|
-    config.rspec_opts = YAML.load_file 'spec/spec.opts'
-  end
-
-  TEST_DEPS.unshift :compile
+RSpec::Core::RakeTask.new(:spec => :compile) do |config|
+  config.rspec_opts = YAML.load_file 'spec/spec.opts'
 end
 
 desc "Build all packages"
@@ -58,37 +49,29 @@ task :test => [ :spec ]
 
 namespace :bench do
   ITER = ENV['ITER'] ? ENV['ITER'].to_i : 100000
-  bench_libs = "-Ilib" unless RUBY_PLATFORM == "java"
-  bench_files = Dir["bench/bench_*.rb"].reject { |f| f == "bench/bench_helper.rb" }
+  bench_files = Dir["bench/bench_*.rb"].sort.reject { |f| f == "bench/bench_helper.rb" }
   bench_files.each do |bench|
-    task File.basename(bench, ".rb")[6..-1] => TEST_DEPS do
-      sh %{#{Gem.ruby} #{bench_libs} #{bench} #{ITER}}
+    task File.basename(bench, ".rb")[6..-1] => :compile do
+      h %{#{Gem.ruby} #{bench} #{ITER}}
     end
   end
-  task :all => TEST_DEPS do
+  task :all => :compile do
     bench_files.each do |bench|
-      sh %{#{Gem.ruby} #{bench_libs} #{bench}}
+      sh %{#{Gem.ruby} #{bench}}
     end
   end
 end
 
-task 'spec:run' => TEST_DEPS
-task 'spec:specdoc' => TEST_DEPS
+task 'spec:run' => :compile
+task 'spec:specdoc' => :compile
 
 task :default => :spec
 
 namespace 'java' do
 
-  java_gem_spec = Gem::Specification.new do |s|
-    s.name = gem_spec.name
-    s.version = gem_spec.version
-    s.author = gem_spec.author
-    s.email = gem_spec.email
-    s.homepage = gem_spec.homepage
-    s.summary = gem_spec.summary
-    s.description = gem_spec.description
-    s.files = %w(LICENSE COPYING README.md CHANGELOG.md Rakefile)
-    s.license = gem_spec.license
+  java_gem_spec = gem_spec.dup.tap do |s|
+    s.files.reject! { |f| File.fnmatch?("ext/*", f) }
+    s.extensions = []
     s.platform = 'java'
   end
 
@@ -101,7 +84,7 @@ end
 
 task 'gem:java' => 'java:gem'
 
-unless java?
+if RUBY_ENGINE == 'ruby' || RUBY_ENGINE == 'rbx'
   require 'rake/extensiontask'
   Rake::ExtensionTask.new('ffi_c', gem_spec) do |ext|
     ext.name = 'ffi_c'                                        # indicate the name of the extension.
@@ -124,13 +107,17 @@ unless java?
       sh "x86_64-w64-mingw32-strip -S build/x64-mingw32/stage/lib/#{ruby_version[/^\d+\.\d+/]}/ffi_c.so"
     end
   end
+else
+  task :compile do
+    STDERR.puts "Nothing to compile on #{RUBY_ENGINE}"
+  end
 end
 
 desc "build a windows gem without all the ceremony"
 task "gem:windows" do
   require "rake_compiler_dock"
   sh "bundle package"
-  RakeCompilerDock.sh "sudo apt-get update && sudo apt-get install -y libltdl-dev && bundle --local && rake cross native gem MAKE='nice make -j`nproc`'"
+  RakeCompilerDock.sh "sudo apt-get update && sudo apt-get install -y libltdl-dev && bundle --local && rake cross native gem MAKE='nice make -j`nproc`' RUBY_CC_VERSION=${RUBY_CC_VERSION/:2.2.2/}"
 end
 
 directory "ext/ffi_c/libffi"
@@ -158,16 +145,16 @@ end.each do |f|
   end
 end
 
-$LOAD_PATH.unshift File.join(File.dirname(__FILE__), 'lib')
-require 'ffi/platform'
+require_relative "lib/ffi/platform"
+
 types_conf = File.expand_path(File.join(FFI::Platform::CONF_DIR, 'types.conf'))
 logfile = File.join(File.dirname(__FILE__), 'types_log')
 
-file types_conf => File.join("lib", "ffi", "version.rb") do |task|
+task types_conf do |task|
   require 'fileutils'
-  require 'ffi/tools/types_generator'
+  require_relative "lib/ffi/tools/types_generator"
   options = {}
-  FileUtils.mkdir_p(File.dirname(task.name), { :mode => 0755 })
+  FileUtils.mkdir_p(File.dirname(task.name), mode: 0755 )
   File.open(task.name, File::CREAT|File::TRUNC|File::RDWR, 0644) do |f|
     f.puts FFI::TypesGenerator.generate(options)
   end
@@ -177,8 +164,7 @@ file types_conf => File.join("lib", "ffi", "version.rb") do |task|
 end
 
 desc "Create or update type information for platform #{FFI::Platform::NAME}"
-task :types_conf => types_conf do
-end
+task :types_conf => types_conf
 
 Gem::Tasks.new do |t|
   t.scm.tag.format = '%s'
