@@ -58,6 +58,7 @@ module CallbackSpecs
       callback :cbIrV, [ :int ], :void
       callback :cbLrV, [ :long ], :void
       callback :cbULrV, [ :ulong ], :void
+      callback :cbLLrV, [ :long_long ], :void
       callback :cbLrV, [ :long_long ], :void
       callback :cbVrT, [ ], S8F32S32.by_value
       callback :cbTrV, [ S8F32S32.by_value ], :void
@@ -78,8 +79,10 @@ module CallbackSpecs
       attach_function :testCallbackVrP, :testClosureVrP, [ :cbVrP ], :pointer
       attach_function :testCallbackReturningFunction, :testClosureVrP, [ :cbVrP ], :cbVrP
       attach_function :testCallbackVrY, :testClosureVrP, [ :cbVrY ], S8F32S32.ptr
-      attach_function :testCallbackVrT, :testClosureVrT, [ :cbVrT ], S8F32S32.by_value
-      attach_function :testCallbackTrV, :testClosureTrV, [ :cbTrV, S8F32S32.ptr ], :void
+      if RUBY_ENGINE != "truffleruby" # struct by value not yet supported on TruffleRuby
+        attach_function :testCallbackVrT, :testClosureVrT, [ :cbVrT ], S8F32S32.by_value
+        attach_function :testCallbackTrV, :testClosureTrV, [ :cbTrV, S8F32S32.ptr ], :void
+      end
       attach_variable :cbVrS8, :gvar_pointer, :cbVrS8
       attach_variable :pVrS8, :gvar_pointer, :pointer
       attach_function :testGVarCallbackVrS8, :testClosureVrB, [ :pointer ], :char
@@ -275,6 +278,7 @@ module CallbackSpecs
     end
 
     it "returning struct by value" do
+      skip "not yet supported on TruffleRuby" if RUBY_ENGINE == "truffleruby"
       skip "Segfault on 32 bit MINGW" if RUBY_PLATFORM == 'i386-mingw32'
       s = LibTest::S8F32S32.new
       s[:s8] = 0x12
@@ -288,6 +292,7 @@ module CallbackSpecs
     end
 
     it "struct by value parameter" do
+      skip "not yet supported on TruffleRuby" if RUBY_ENGINE == "truffleruby"
       s = LibTest::S8F32S32.new
       s[:s8] = 0x12
       s[:s32] = 0x1eefbeef
@@ -305,6 +310,16 @@ module CallbackSpecs
       expect(s2[:f32]).to be_within(0.0000001).of 1.234567
     end
 
+    it "returning :string is rejected as typedef" do
+      expect {
+        Module.new do
+          extend FFI::Library
+          ffi_lib TestLibrary::PATH
+          callback :cbVrA, [], :string
+        end
+      }.to raise_error(TypeError)
+    end
+
 
     it "global variable" do
       proc = Proc.new { 0x1e }
@@ -312,7 +327,44 @@ module CallbackSpecs
       expect(LibTest.testGVarCallbackVrS8(LibTest.pVrS8)).to eq(0x1e)
     end
 
-    describe "When the callback is considered optional by the underlying library" do
+    describe "with proc" do
+      it "should be usabel for different signatures" do
+        pr = proc { 42 }
+        expect(LibTest.testCallbackVrS8(pr)).to eq(42)
+        expect(LibTest.testCallbackVrS8(&pr)).to eq(42)
+        expect(LibTest.testCallbackVrU8(pr)).to eq(42)
+        expect(LibTest.testCallbackVrU8(&pr)).to eq(42)
+        expect(LibTest.testCallbackVrS16(pr)).to eq(42)
+        expect(LibTest.testCallbackVrS8(pr)).to eq(42)
+      end
+
+      if RUBY_ENGINE == "ruby"
+        it "stores function pointers as ivar in proc object" do
+          pr = proc { 42 }
+          expect(LibTest.testCallbackVrS8(pr)).to eq(42)
+          # A proc argument should implicit create a FFI::Function
+          func = pr.instance_variable_get(:@__ffi_callback__)
+          expect(func).to be_kind_of(FFI::Function)
+
+          expect(LibTest.testCallbackVrS8(&pr)).to eq(42)
+          # A proc argument should reuse FFI::Function for the same callback
+          expect(pr.instance_variable_get(:@__ffi_callback__)).to be(func)
+          expect(pr.instance_variable_defined?(:@__ffi_callback_table__)).to be_falsey
+
+          expect(LibTest.testCallbackVrU8(pr)).to eq(42)
+          expect(LibTest.testCallbackVrU8(&pr)).to eq(42)
+          # A second callback signature (FFI::FunctionInfo) is stored in a Hash table
+          expect(pr.instance_variable_get(:@__ffi_callback_table__).length).to eq(1)
+
+          expect(LibTest.testCallbackVrS16(pr)).to eq(42)
+          # A third callback signature should create another Hash entry
+          expect(pr.instance_variable_get(:@__ffi_callback_table__).length).to eq(2)
+        end
+      end
+    end
+
+
+  describe "When the callback is considered optional by the underlying library" do
       it "should handle receiving 'nil' in place of the closure" do
         expect(LibTest.testOptionalCallbackCrV(nil, 13)).to be_nil
       end
@@ -830,12 +882,10 @@ module CallbackInteropSpecs
     end
 
     # https://github.com/ffi/ffi/issues/527
-    if RUBY_VERSION.split('.').map(&:to_i).pack("C*") >= [2,3,0].pack("C*") || RUBY_PLATFORM =~ /java/
-      it "from fiddle to ffi" do
-        assert_callback_in_same_thread_called_once do |block|
-          func = FFI::Function.new(:void, [:pointer], &block)
-          LibTestFiddle.testClosureVrV(Fiddle::Pointer[func.to_i])
-        end
+    it "from fiddle to ffi" do
+      assert_callback_in_same_thread_called_once do |block|
+        func = FFI::Function.new(:void, [:pointer], &block)
+        LibTestFiddle.testClosureVrV(Fiddle::Pointer[func.to_i])
       end
     end
 
@@ -861,22 +911,11 @@ module CallbackInteropSpecs
     end
 
     # https://github.com/ffi/ffi/issues/527
-    if RUBY_ENGINE == 'ruby' && RUBY_VERSION.split('.').map(&:to_i).pack("C*") >= [2,3,0].pack("C*")
+    if RUBY_ENGINE == 'ruby'
       it "C outside ffi call stack does not deadlock [#527]" do
-        path = File.join(File.dirname(__FILE__), "embed-test/embed-test.rb")
-        pid = spawn(RbConfig.ruby, "-Ilib", path, { [:out, :err] => "embed-test.log" })
-        begin
-          Timeout.timeout(10){ Process.wait(pid) }
-        rescue Timeout::Error
-          Process.kill(9, pid)
-          raise
-        else
-          if $?.exitstatus != 0
-            raise "external process failed:\n#{ File.read("embed-test.log") }"
-          end
-        end
-
-        expect(File.read("embed-test.log")).to match(/callback called with \["hello", 5, 0\]/)
+        skip "not yet supported on TruffleRuby" if RUBY_ENGINE == "truffleruby"
+        out = external_run(RbConfig.ruby, "embed-test/embed-test.rb")
+        expect(out).to match(/callback called with \["hello", 5, 0\]/)
       end
     end
   end

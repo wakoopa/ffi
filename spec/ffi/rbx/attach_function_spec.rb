@@ -13,7 +13,11 @@ module RbxAttachFunctionSpecs
 
     module LibC
       extend FFI::Library
-      ffi_lib FFI::Library::LIBC
+      if FFI::Platform.windows?
+        ffi_lib RbConfig::CONFIG["LIBRUBY_SO"]
+      else
+        ffi_lib FFI::Library::LIBC
+      end
 
       attach_function :gettimeofday, [:pointer, :pointer], :int
     end
@@ -33,4 +37,4 @@ module RbxAttachFunctionSpecs
       end
     end
   end
-end
+end unless RUBY_ENGINE == 'jruby'

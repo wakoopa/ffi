@@ -27,13 +27,8 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef _MSC_VER
-# include <stdint.h>
-# include <stdbool.h>
-#else
-# include "win32/stdint.h"
-# include "win32/stdbool.h"
-#endif
+#include <stdint.h>
+#include <stdbool.h>
 #include <limits.h>
 #include <ruby.h>
 #include "rbffi.h"
@@ -183,7 +178,7 @@ ptr_initialize_copy(VALUE self, VALUE other)
     
     dst->allocated = true;
     dst->autorelease = true;
-    dst->memory.address = (void *) (((uintptr_t) dst->storage + 0x7) & (uintptr_t) ~0x7UL);
+    dst->memory.address = (void *) (((uintptr_t) dst->storage + 0x7) & (uintptr_t) ~0x7ULL);
     dst->memory.size = src->size;
     dst->memory.typeSize = src->typeSize;
     
@@ -333,7 +328,7 @@ ptr_address(VALUE self)
  * @overload order(order)
  *  @param  [Symbol] order endianness to set (+:little+, +:big+ or +:network+). +:big+ and +:network+ 
  *   are synonymous.
- *  @return [self]
+ *  @return a new pointer with the new order
  */
 static VALUE
 ptr_order(int argc, VALUE* argv, VALUE self)
@@ -358,6 +353,8 @@ ptr_order(int argc, VALUE* argv, VALUE self)
 
             } else if (id == rb_intern("big") || id == rb_intern("network")) {
                 order = BIG_ENDIAN;
+            } else {
+                rb_raise(rb_eArgError, "unknown byte order");
             }
         }
         if (order != BYTE_ORDER) {
@@ -473,8 +470,10 @@ rbffi_Pointer_Init(VALUE moduleFFI)
      * {#address} (as a C pointer). It permits additions with an integer for pointer arithmetic.
      *
      * ==Autorelease
-     * A pointer object may autorelease his contents when freed (by default). This behaviour may be
-     * changed with {#autorelease=} method.
+     * By default a pointer object frees its content when it's garbage collected.
+     * Therefore it's usually not necessary to call {#free} explicit.
+     * This behaviour may be changed with {#autorelease=} method.
+     * If it's set to +false+, the memory isn't freed by the garbage collector, but stays valid until +free()+ is called on C level or when the process terminates.
      */
     rbffi_PointerClass = rb_define_class_under(moduleFFI, "Pointer", ffi_AbstractMemory);
     /*

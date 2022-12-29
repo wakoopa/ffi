@@ -7,9 +7,9 @@
 #include <string.h>
 
 int 
-string_equals(const char* s1, const char* s2)
+buffer_equals(const void* s1, const void* s2, size_t size)
 {
-    return strcmp(s1, s2) == 0;
+    return memcmp(s1, s2, size) == 0;
 }
 
 void 

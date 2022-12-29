@@ -16,14 +16,18 @@ module TestLibrary
       else
         "i386"
       end
-    when /amd64|x86_64/
+    when /amd64|x86_64|x64/
       "x86_64"
     when /ppc64|powerpc64/
       "powerpc64"
     when /ppc|powerpc/
       "powerpc"
     when /^arm/
-      "arm"
+      if RbConfig::CONFIG['host_os'] =~ /darwin/
+        "aarch64"
+      else
+        "arm"
+      end
     else
       RbConfig::CONFIG['host_cpu']
     end
@@ -50,15 +54,11 @@ module TestLibrary
   def self.compile_library(path, lib)
     dir = File.expand_path(path, File.dirname(__FILE__))
     lib = "#{dir}/#{lib}"
-    unless File.exist?(lib)
-      output = nil
-      FileUtils.cd(dir) do
-        make = ENV['MAKE'] || (system('which gmake >/dev/null') ? 'gmake' : 'make')
-        output = system(*%{#{make} CPU=#{CPU} OS=#{OS}}.tap{|x| puts x.inspect})
-      end
+    FileUtils.cd(dir) do
+      make = ENV['MAKE'] || (system('which gmake >/dev/null') ? 'gmake' : 'make')
 
-      unless $?.success?
-        puts "ERROR:\n#{output}"
+      unless system(*%{#{make} CPU=#{CPU} OS=#{OS}}.tap{ |cmd| puts cmd.inspect })
+        puts "ERROR: #{$?}"
         raise "Unable to compile #{lib.inspect}"
       end
     end

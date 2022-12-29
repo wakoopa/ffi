@@ -40,11 +40,12 @@ extern "C" {
     
 typedef struct MethodHandlePool MethodHandlePool;
 typedef struct MethodHandle MethodHandle;
+typedef VALUE (*rbffi_function_anyargs)(int argc, VALUE* argv, VALUE self);
 
 
 MethodHandle* rbffi_MethodHandle_Alloc(FunctionType* fnInfo, void* function);
 void rbffi_MethodHandle_Free(MethodHandle* handle);
-void* rbffi_MethodHandle_CodeAddress(MethodHandle* handle);
+rbffi_function_anyargs rbffi_MethodHandle_CodeAddress(MethodHandle* handle);
 void rbffi_MethodHandle_Init(VALUE module);
 
 #ifdef	__cplusplus

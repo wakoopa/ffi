@@ -32,12 +32,9 @@
 #include <sys/types.h>
 #ifndef _MSC_VER
 # include <sys/param.h>
-# include <stdint.h>
-# include <stdbool.h>
-#else
-# include "win32/stdbool.h"
-# include "win32/stdint.h"
 #endif
+#include <stdint.h>
+#include <stdbool.h>
 
 #include <limits.h>
 #include <ruby.h>
@@ -135,11 +132,13 @@ static VALUE memory_put_array_of_##name(VALUE self, VALUE offset, VALUE ary); \
 static VALUE \
 memory_put_array_of_##name(VALUE self, VALUE offset, VALUE ary) \
 { \
-    long count = RARRAY_LEN(ary); \
+    long count; \
     long off = NUM2LONG(offset); \
     AbstractMemory* memory = MEMORY(self); \
     long i; \
-    checkWrite(memory); \
+    Check_Type(ary, T_ARRAY); \
+    count = RARRAY_LEN(ary); \
+    if (likely(count > 0)) checkWrite(memory); \
     checkBounds(memory, off, count * sizeof(type)); \
     for (i = 0; i < count; i++) { \
         type tmp = (type) VAL(toNative(RARRAY_PTR(ary)[i]), swap); \
@@ -162,7 +161,7 @@ memory_get_array_of_##name(VALUE self, VALUE offset, VALUE length) \
     AbstractMemory* memory = MEMORY(self); \
     VALUE retVal = rb_ary_new2(count); \
     long i; \
-    checkRead(memory); \
+    if (likely(count > 0)) checkRead(memory); \
     checkBounds(memory, off, count * sizeof(type)); \
     for (i = 0; i < count; ++i) { \
         type tmp; \
